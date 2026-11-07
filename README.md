@@ -12,18 +12,27 @@ This repository represents an active research and development effort. The system
 
 ## Project Status
 
-Development Status: Active (Work in Progress)
+Development Status: **MVP running** (November 2026)
 
-This project is not yet production-stable.
-Core models are under experimentation and validation.
+What works today:
 
-Upcoming improvements include:
+* Automated data ingestion from football-data.co.uk (results + bookmaker odds for 6 leagues over the last 6 seasons, plus upcoming fixtures), stored in SQLite
+* The original Excel model ported to Python ("Oracle rules": metric votes + Double Chance confidence tiers)
+* A logistic-regression model (1X2, Over 2.5, BTTS) trained on the same features
+* Walk-forward backtest against bookmaker odds
+* FastAPI backend + React frontend: Top bets (≥70%), Fixtures, Head-to-head predictor, Model performance, Bankroll tracker with quarter-Kelly staking and account-growth chart
 
-* Data pipeline restructuring
-* Model performance optimization
-* Feature engineering expansion
-* API layer development
-* Deployment infrastructure design
+### Honest backtest results
+
+Each season is predicted by a model trained only on earlier seasons:
+
+| Season | Model accuracy | Market accuracy | Excel rules | ≥70% picks hit rate | ≥70% picks ROI |
+|---|---|---|---|---|---|
+| 2023/24 | 50.4% | 53.3% | 49.6% | 77.0% | −3.8% |
+| 2024/25 | 50.8% | 52.4% | 48.6% | 76.5% | −4.7% |
+| 2025/26 | 48.9% | 51.7% | 46.6% | 76.4% | −5.2% |
+
+The model is well calibrated but does **not** beat the bookmakers yet. Next steps to close that gap: richer data (xG, lineups, injuries), Poisson/Dixon-Coles goal models, and a league-strength adjustment for promoted teams.
 
 ---
 
@@ -74,43 +83,66 @@ Deployment Layer (Planned)
 
 ---
 
-## Current Repository Structure
+## Repository Structure
 
-MODEL2024/
-Contains experimental and production candidate model files.
-
-MoScOv.xlsx
-Structured dataset and statistical input source.
-
-New-120betting-120model (AutoRecovered)
-Model iteration draft and testing artifacts.
-
-workplan.docx
-Project development and strategy planning document.
-
-Note: Repository structure will evolve as development progresses.
+```
+backend/              FastAPI app (Python 3.12)
+  app/config.py       leagues, seasons, thresholds
+  app/data.py         download + SQLite storage
+  app/features.py     pre-match team metrics (ported from the Excel sheets)
+  app/rules.py        original Excel decision rules
+  app/model.py        logistic-regression model
+  app/markets.py      markets, edge, Kelly staking
+  app/backtest.py     walk-forward evaluation
+  app/bankroll.py     bet log + bankroll growth
+  app/main.py         REST API (also serves the built frontend)
+  tests/              pytest suite (offline, synthetic data)
+frontend/             React + TypeScript (Vite) UI
+Dockerfile            single-container build (API + UI)
+New betting model (AutoRecovered).xlsm   original Excel model (reference)
+MoSCoW.xlsx           feature prioritisation
+workplan.docx         project plan
+```
 
 ---
 
-## Installation (Development Environment)
+## Running Locally
 
-Prerequisites:
-
-* Python 3.9+
-* pip
-* Virtual environment recommended
-
-Example setup:
+Prerequisites: Python 3.12, Node 20+.
 
 ```bash
 git clone https://github.com/emmanuelebube13/BettorsOracle.git
-cd BettorsOracle
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+cd BettorsOracle/backend
+python -m venv .venv
+.venv\Scripts\activate              # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
+python -m app.cli refresh           # download data, train, backtest (~1 min)
+uvicorn app.main:app --reload --port 8000
+
+# second terminal
+cd frontend
+npm install
+npm run dev                         # http://localhost:5173 (proxies /api to :8000)
 ```
 
-Further setup instructions will be documented as the application layer is finalized.
+* Tests: `cd backend && pytest`
+* Single process: `cd frontend && npm run build`, then start uvicorn. The UI is served at http://localhost:8000
+* Docker: `docker build -t bettorsoracle . && docker run -p 8000:8000 -v bo-data:/data bettorsoracle`
+* Environment variables: `BO_ADMIN_TOKEN` (protects `POST /api/admin/refresh`), `BO_DATA_DIR`, `BO_CORS_ORIGINS`, `BO_N_SEASONS`
+
+---
+
+## Live Deployment
+
+**https://emmanuelebube13.github.io/BettorsOracle/**
+
+The live site runs entirely on GitHub, with no server to maintain:
+
+* `.github/workflows/deploy.yml` runs on every push to `main`, every 6 hours, and on demand (Actions tab → *Run workflow*)
+* Each run tests the backend, downloads the latest results and fixtures, retrains the model, re-runs the backtest, exports predictions as JSON (`python -m app.cli export`), builds the React app in static mode (`npm run build:static`) and publishes it to GitHub Pages
+* In the hosted version the bankroll tracker is stored in each visitor's browser (localStorage). Run the FastAPI app locally or in Docker for a server-side bet log
+
+Note: GitHub pauses scheduled workflows after 60 days without repository activity; re-enable it from the Actions tab if that happens.
 
 ---
 
