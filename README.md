@@ -1,5 +1,7 @@
 # BettorsOracle
 
+**Live app:** https://emmanuelebube13.github.io/BettorsOracle/ (predictions refresh every 6 hours)
+
 ## Overview
 
 BettorsOracle is a machine learning–driven web application for predicting football match outcomes using statistical modeling and historical performance data.
